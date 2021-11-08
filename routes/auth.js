@@ -4,14 +4,54 @@ import userModel from '../modal/User.js';
 export const authRoute = express.Router()
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-authRoute.post('/signup', async (req, res) => {
+import cors from 'cors'
+
+const options = {
+    allowedHeaders: [
+        'Origin',
+        'X-Requested-With',
+        'Content-Type',
+        'Accept',
+        'X-Access-Token',
+    ],
+    credentials: true,
+    methods: 'GET,HEAD,OPTIONS,PUT,PATCH,POST,DELETE',
+    origin: 'http:localhost:3000',
+    preflightContinue: false,
+}
+
+authRoute.use(cors(options));
+authRoute.options('*', cors(options))
+
+
+
+authRoute.post("/tokenIsValid", async (req, res) => {
     try {
+        res.header("Access-Control-Allow-Origin", "http://localhost:3000")
+        const token = req.header("token");
+        if (!token) return res.json(false);
+
+        const verified = jwt.verify(token, process.env.JWT_SECRET);
+        if (!verified) return res.json(false);
+
+        const user = await userModel.findById(verified.id);
+        if (!user) return res.json(false);
+
+        return res.json(true);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+authRoute.post('/signup', async (req, res) => {
+
+    try {
+        res.header("Access-Control-Allow-Origin", "http://localhost:3000")
         let { username, email, password } = req.body;
-        console.log('hhhhhhhhhhhhh');
         // validation
 
         if (!email || !password) {
-            return res.status(400).json({ msg: "Not all fields have been entered." });
+            return res.status(400).json({ msg: "Not all fields have been entered." })
         }
 
         const existingUser = await userModel.findOne({ email: email });
@@ -35,36 +75,55 @@ authRoute.post('/signup', async (req, res) => {
         res.json(savedUser);
     }
     catch (err) {
-        console.log('hello');
+        console.log(err);
     }
 })
 
+authRoute.get('/user',async (req, res) => {
+    
+    try {
+        res.header("Access-Control-Allow-Origin", "http://localhost:3000")
+        const token = req.header("token");
+        if (!token)
+            return res.status(401).json({ msg: "No authentication token, access denied" });
 
+        const verified = jwt.verify(token, process.env.JWT_SECRET);
+        console.log(token,"----------------------",process.env.JWT_SECRET);
+        console.log("verified",verified);
+        if (!verified)
+            return res.status(401).json({ msg: "Token verification failed, authorization denied" });
+
+        req.user = verified.id;
+        console.log(req.user);
+        const user = await userModel.findById(req.user);
+        console.log(user);
+        res.json({
+          user: user,
+          id: user._id
+      
+        })    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+  
+})
 authRoute.post('/login', async (req, res) => {
     try {
+        res.header("Access-Control-Allow-Origin", "http://localhost:3000")
         const { email, password } = req.body
         if (!email || !password) {
-            return res.status(400).json({ msg: "Not all fields have been entered." });
+            return res.status(400).json({ msg: "Not all fields have been entered." })
         }
-
-
         const existingUser = await userModel.findOne({ email: email });
-
         if (!existingUser) {
-            
             return res
-            .status(400)
-            .json({ msg: "No account with this email has been registered." });
+                .status(400)
+                .json({ msg: "No account with this email has been registered." });
         }
-        console.log("isMatch",existingUser.password);
         const isMatch = await bcrypt.compare(password, existingUser.password);
-        console.log("isMatch",isMatch);
-        
+
         if (!isMatch) return res.status(400).json({ msg: "Invalid credentials." });
 
-        console.log('token',process.env.JWT_SECRET);
         const token = jwt.sign({ id: existingUser._id }, process.env.JWT_SECRET);
-
         res.json({
             token,
             user: {
@@ -73,7 +132,30 @@ authRoute.post('/login', async (req, res) => {
             },
         })
     }
-    catch(err){
-        return res.json({msg:err.message});
+    catch (err) {
+        return res.json({ msg: err.message });
     }
+})
+
+
+authRoute.get('/users', async (req, res) => {
+    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
+    const user = await userModel.find();
+    res.json({
+        users:user,
+        id: userModel._id
+
+    })
+})
+
+authRoute.post('/logout', async (req, res) => {
+    const {id,logouttime} = req.body
+    console.log(logouttime);
+    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
+    const user = await userModel.findByIdAndUpdate(id,{$push:{logout:logouttime}});
+    res.json({
+        users:user,
+        id: userModel._id
+
+    })
 })
